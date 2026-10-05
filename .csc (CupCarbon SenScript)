@@ -1,0 +1,66 @@
+
+// --- SCRIPT PARA NODOS SENSORES (SenScript) ---
+loop
+   read sensor_humedad x
+   delay 1000
+   if x < 450
+      print "Alerta de estrés hídrico detectado: " x
+   end
+   send x 0
+   delay 10000
+
+// --- SCRIPT PARA NODO BASE SINK (SenScript) ---
+loop
+   wait
+   read valor_recibido
+   print "Trama IoT decodificada en Gateway: " valor_recibido
+   store valor_recibido base_data.txt
+
+Etapa 3: Implementación en Hardware e Interoperabilidad Cloud
+El prototipo físico se estructuró utilizando un microcontrolador ESP32 programado bajo lenguaje C++ nativo. El dispositivo establece una conexión segura TCP/IP hacia un clúster MQTT público, gestionando variables y actuando directamente sobre un relé de conmutación acoplado a una electroválvula de riego:
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+const char* ssid = "Red_Agricola_UEA";
+const char* password = "Amazonia2026";
+const char* mqtt_server = "broker.hivemq.com";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+const int pinSensor = 34;
+const int pinRele = 25;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(pinRele, OUTPUT);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  if ((char)payload == '1') {
+    digitalWrite(pinRele, HIGH); // Activa el riego automatizado
+  } else {
+    digitalWrite(pinRele, LOW);  // Desactiva el riego
+  }
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    if (client.connect("ESP32_Sensor_Rosa")) {
+      client.subscribe("uea/agro/control");
+    } else { delay(5000); }
+  }
+}
+
+void loop() {
+  if (!client.connected()) reconnect();
+  client.loop();
+  int lectura = analogRead(pinSensor);
+  char msg[50];
+  sprintf(msg, "%d", lectura);
+  client.publish("uea/agro/humedad", msg);
+  delay(10000);
+}
